@@ -17,36 +17,37 @@ Plugin::create(:realtime_search) do
   @querycount.closeup(Gtk::HBox.new(false, 0).pack_start(@querybox).closeup(@searchbtn))
   @container = Gtk::VBox.new(false,0).pack_start(@querycount,false).pack_start(@main, true)
 
+  @streaming_thread = nil
+
   def keyword( keys )
     keys.split(/,|\s/).map{|k| k.strip}.join(",")
   end
 
   def streaming_search(bw)
-    Thread.new{
-      loop{
-        sleep(3)
-        notice 'filter stream: connect'
-        begin
-          break if @pbzw != bw && @pbzw
-          @pbzw = bw
-          buzzword = keyword(bw)
-          if !buzzword or buzzword.empty?
-            sleep(60)
-          else            Plugin.call(:rewindstatus, "Searchワード: #{buzzword}")
-            STDERR.puts "Searchワード: #{buzzword}"
-            timeout(60){
-              @service.streaming(:filter_stream, :track => buzzword){|word|
-                @queue_parse.push word
-              }
-            }
-          end
-        rescue TimeoutError => e
-        rescue => e
-          warn e
-        end
-        notice 'filter stream: disconnected'
-      }
-      @pbzw = nil
+    if @streaming_thread
+      notice 'kill the previous thread'
+      Thread.kill(@streaming_thread)
+      @streaming_thread = nil
+    end
+
+    buzzword = keyword(bw)
+    if !buzzword or buzzword.empty?
+      Plugin.call(:rewindstatus, "Searchワードが空みたいよ")
+      return
+    end
+
+    @streaming_thread = Thread.new{
+      notice 'filter stream: connect'
+      begin
+        Plugin.call(:rewindstatus, "Searchワード: #{buzzword}")
+        STDERR.puts "Searchワード: #{buzzword}"
+        @service.streaming(:filter_stream, :track => buzzword){|word|
+          @queue_parse.push word
+        }
+      rescue => e
+        warn e
+      end
+      notice 'filter stream: disconnected'
     }
   end
 
@@ -57,7 +58,7 @@ Plugin::create(:realtime_search) do
         p "JSON:"+json.to_s
         case json
         when /^\{.*\}$/
-          messages = @service.__send__(:parse_json, json, :streaming_status) # rescue nil
+          messages = @service.__send__(:parse_json, json, :streaming_status)
           if messages.is_a? Enumerable
             messages.each{ |message|
               p message
@@ -73,11 +74,9 @@ Plugin::create(:realtime_search) do
     @service = Post.services.first
     Plugin.call(:mui_tab_regist, @container, 'Search')
     @searchbtn.signal_connect('clicked'){|elm|
-      elm.sensitive = @querybox.sensitive = false
       @main.clear
       streaming_search(@querybox.text)
       display_search
-      elm.sensitive = @querybox.sensitive = true
     }
   end
 end
