@@ -11,15 +11,17 @@ Plugin::create(:realtime_search) do
   @querycount = Gtk::VBox.new(false,0)
   @searchbtn = Gtk::Button.new('検索')
   @queue_parse = SizedQueue.new(2)
-  @queue_event = TimeLimitedQueue.new(4, 1){ |messages| Delayer.new(Delayer::LAST){ @main.add messages } }
+  @queue_event = TimeLimitedQueue.new(4, 1){|messages|
+    Delayer.new(Delayer::LAST){ @main.add messages }
+  }
   @querycount.closeup(Gtk::HBox.new(false, 0).pack_start(@querybox).closeup(@searchbtn))
   @container = Gtk::VBox.new(false,0).pack_start(@querycount,false).pack_start(@main, true)
 
   def keyword( keys )
-    keys.split(/,|(\s+)/).map{|k| k.strip}.join(",")
+    keys.split(/,|\s/).map{|k| k.strip}.join(",")
   end
 
-  def streaming_search( bw )
+  def streaming_search(bw)
     Thread.new{
       loop{
         sleep(3)
@@ -30,19 +32,18 @@ Plugin::create(:realtime_search) do
           buzzword = keyword(bw)
           if !buzzword or buzzword.empty?
             sleep(60)
-          else
-            Plugin.call(:rewindstatus, "Searchワード: #{buzzword}")
-            puts "Searchワード: #{buzzword}"
+          else            Plugin.call(:rewindstatus, "Searchワード: #{buzzword}")
+            STDERR.puts "Searchワード: #{buzzword}"
             timeout(60){
-              # ほぼ確実にここ発行しすぎ
-              @service.streaming(:filter_stream, :track => buzzword){ |word|
+              @service.streaming(:filter_stream, :track => buzzword){|word|
                 @queue_parse.push word
               }
             }
           end
         rescue TimeoutError => e
         rescue => e
-          warn e end
+          warn e
+        end
         notice 'filter stream: disconnected'
       }
       @pbzw = nil
@@ -67,24 +68,17 @@ Plugin::create(:realtime_search) do
       }
     }
   end
-  #def search(word)
-  Delayer.new {
+
+  Delayer.new do
     @service = Post.services.first
     Plugin.call(:mui_tab_regist, @container, 'Search')
     @searchbtn.signal_connect('clicked'){|elm|
-      Gtk::Lock.synchronize do
-        elm.sensitive = @querybox.sensitive = false
-        @main.clear
-        streaming_search(@querybox.text)
-        # streaming_search(UserConfig[:realtime_search])
-        display_search
-        sleep(60) #検索開始から1分はまつ
-        elm.sensitive = @querybox.sensitive = true
-      end
+      elm.sensitive = @querybox.sensitive = false
+      @main.clear
+      streaming_search(@querybox.text)
+      display_search
+      elm.sensitive = @querybox.sensitive = true
     }
-  }
-  # end
-
-  # search(UserConfig[:realtime_search])
+  end
 end
 
