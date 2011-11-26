@@ -58,13 +58,11 @@ Plugin::create(:realtime_search) do
     Thread.new{
       loop{
         json = @queue_parse.pop.strip
-        p "JSON:"+json.to_s
         case json
         when /^\{.*\}$/
           messages = @service.__send__(:parse_json, json, :streaming_status)
           if messages.is_a? Enumerable
             messages.each{ |message|
-              p message
               @queue_event.push message if message.is_a? Message
             }
           end
