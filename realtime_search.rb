@@ -7,6 +7,7 @@ miquire :mui, 'timeline'
 Plugin::create(:realtime_search) do
   @main = Gtk::TimeLine.new()
   @main.force_retrieve_in_reply_to = false
+  @closebtn = Gtk::Button.new.add(Gtk::WebIcon.new(MUI::Skin.get('close.png'), 16, 16))
   @querybox = Gtk::Entry.new
   @querycount = Gtk::VBox.new(false,0)
   @searchbtn = Gtk::Button.new('検索')
@@ -14,7 +15,7 @@ Plugin::create(:realtime_search) do
   @queue_event = TimeLimitedQueue.new(4, 1){|messages|
     Delayer.new(Delayer::LAST){ @main.add messages }
   }
-  @querycount.closeup(Gtk::HBox.new(false, 0).pack_start(@querybox).closeup(@searchbtn))
+  @querycount.closeup(Gtk::HBox.new.pack_start(@querybox).closeup(@searchbtn).closeup(@closebtn))
   @container = Gtk::VBox.new(false,0).pack_start(@querycount,false).pack_start(@main, true)
 
   @streaming_thread = nil
@@ -23,12 +24,14 @@ Plugin::create(:realtime_search) do
     keys.split(/,|\s/).map{|k| k.strip}.join(",")
   end
 
+  def stop_search
+    notice 'kill the previous thread'
+    Thread.kill(@streaming_thread)
+    @streaming_thread = nil
+  end
+
   def streaming_search(bw)
-    if @streaming_thread
-      notice 'kill the previous thread'
-      Thread.kill(@streaming_thread)
-      @streaming_thread = nil
-    end
+    stop_search if @streaming_thread
 
     buzzword = keyword(bw)
     if !buzzword or buzzword.empty?
@@ -78,6 +81,7 @@ Plugin::create(:realtime_search) do
       streaming_search(@querybox.text)
       display_search
     }
+    @closebtn.signal_connect('clicked') { stop_search }
   end
 end
 
