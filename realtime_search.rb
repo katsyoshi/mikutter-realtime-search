@@ -26,7 +26,7 @@ Plugin::create(:realtime_search) do
 
   def stop_search
     notice 'kill the previous thread'
-    Thread.kill(@streaming_thread)
+    Thread.kill(@streaming_thread) if @streaming_thread
     @streaming_thread = nil
   end
 
